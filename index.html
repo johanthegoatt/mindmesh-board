@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MindMesh Board</title>
+  <meta name="description" content="Local-first collaborative mind mapping board.">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="hero">
+      <h1>MindMesh Board</h1>
+      <p>Node-link brainstorming board with local sync simulation.</p>
+      <div class="actions">
+        <button id="add-node-btn" type="button">Add Node</button>
+        <button id="rename-node-btn" type="button">Rename</button>
+        <button id="delete-node-btn" type="button">Delete</button>
+        <button id="clear-selection-btn" type="button">Clear Selection</button>
+        <button id="undo-btn" type="button">Undo</button>
+        <button id="redo-btn" type="button">Redo</button>
+        <button id="new-board-btn" type="button">New Board</button>
+        <button id="export-md-btn" type="button">Export Markdown</button>
+        <button id="import-md-btn" type="button">Import Markdown</button>
+        <input id="import-md-file" type="file" accept=".md,.txt" hidden>
+      </div>
+      <p id="status" class="status" aria-live="polite"></p>
+    </header>
+
+    <section class="board-panel">
+      <svg id="board" viewBox="0 0 1200 700" role="img" aria-label="Mind mapping board"></svg>
+    </section>
+  </main>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

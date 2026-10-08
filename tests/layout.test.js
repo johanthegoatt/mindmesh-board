@@ -64,3 +64,19 @@ test("handles an empty board and a single idea", () => {
   const one = forceLayout({ nodes: [{ id: "x", x: 10, y: 10 }], links: [] });
   assert.ok(one.x.x >= 56);
 });
+
+test("a small board stays compact instead of flying to the edges", () => {
+  const board = {
+    nodes: [
+      { id: "a", x: 300, y: 300 },
+      { id: "b", x: 320, y: 310 },
+      { id: "c", x: 900, y: 500 },
+      { id: "d", x: 700, y: 200 }
+    ],
+    links: ["a::b", "b::c"]
+  };
+  const positions = Object.values(forceLayout(board));
+  for (const p of positions) {
+    assert.ok(Math.hypot(p.x - 600, p.y - 350) < 300, `too far out: ${p.x},${p.y}`);
+  }
+});

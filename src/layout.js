@@ -22,6 +22,7 @@ export function forceLayout(snapshot, options = {}) {
   const margin = options.margin ?? 56;
   const iterations = options.iterations ?? 300;
   const random = mulberry32(options.seed ?? 7);
+  const gravity = options.gravity ?? 0.05;
 
   const nodes = snapshot.nodes.map((node) => ({ id: node.id, x: node.x, y: node.y, dx: 0, dy: 0 }));
   if (nodes.length === 0) return {};
@@ -33,7 +34,9 @@ export function forceLayout(snapshot, options = {}) {
   }
 
   const area = (width - 2 * margin) * (height - 2 * margin);
-  const k = 0.75 * Math.sqrt(area / nodes.length);
+  // The textbook k fills the whole frame, which flings a 3 idea board into
+  // the corners. Capping it keeps small maps compact around the middle.
+  const k = Math.min(0.75 * Math.sqrt(area / nodes.length), options.maxSpacing ?? 150);
   let temperature = width / 10;
   const cooling = temperature / (iterations + 1);
 
@@ -53,6 +56,10 @@ export function forceLayout(snapshot, options = {}) {
           ddy = random() - 0.5;
           dist = Math.hypot(ddx, ddy);
         }
+        // The paper's grid variant ignores pairs further apart than 2k.
+        // Without the cutoff, a lone idea gets pushed into a corner by
+        // everything else on the board.
+        if (dist > 2 * k) continue;
         const push = (k * k) / dist;
         nodes[i].dx += (ddx / dist) * push;
         nodes[i].dy += (ddy / dist) * push;
@@ -74,8 +81,8 @@ export function forceLayout(snapshot, options = {}) {
 
     // A weak pull to the middle keeps separate clusters on screen.
     for (const node of nodes) {
-      node.dx += (width / 2 - node.x) * 0.02;
-      node.dy += (height / 2 - node.y) * 0.02;
+      node.dx += (width / 2 - node.x) * gravity;
+      node.dy += (height / 2 - node.y) * gravity;
       const step = Math.hypot(node.dx, node.dy);
       if (step > 0) {
         const capped = Math.min(step, temperature);

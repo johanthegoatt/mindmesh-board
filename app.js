@@ -13,6 +13,7 @@ import {
 } from "./src/boardState.js";
 import { createHistory, pushSnapshot, redoSnapshot, undoSnapshot } from "./src/history.js";
 import { clearSnapshot, loadSnapshot, saveSnapshot } from "./src/persistence.js";
+import { forceLayout } from "./src/layout.js";
 import { createSyncBus } from "./src/syncBus.js";
 
 const boardSvg = document.getElementById("board");
@@ -27,6 +28,8 @@ const exportBtn = document.getElementById("export-md-btn");
 const importBtn = document.getElementById("import-md-btn");
 const importFileInput = document.getElementById("import-md-file");
 const statusEl = document.getElementById("status");
+const tidyBtn = document.getElementById("tidy-btn");
+const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
 const seedSnapshot = loadSnapshot();
 let state = createBoardState(seedSnapshot || {});
@@ -193,6 +196,44 @@ deleteNodeBtn.addEventListener("click", () => {
   }
 });
 
+function tidyUp() {
+  if (state.nodes.size < 2) {
+    updateStatus("Add a few ideas first, then tidy up.");
+    return;
+  }
+  const targets = forceLayout(serializeState(state));
+  const starts = new Map(Array.from(state.nodes.values(), (node) => [node.id, { x: node.x, y: node.y }]));
+  const finish = () => {
+    for (const [id, target] of Object.entries(targets)) {
+      if (state.nodes.has(id)) moveNode(state, id, target.x, target.y);
+    }
+    persistAndRecord("Tidied up: linked ideas sit together, nothing overlaps");
+    render();
+  };
+  if (reduceMotion.matches) {
+    finish();
+    return;
+  }
+  const began = performance.now();
+  const step = (now) => {
+    const t = Math.min((now - began) / 450, 1);
+    const ease = 1 - Math.pow(1 - t, 3);
+    for (const [id, target] of Object.entries(targets)) {
+      const node = state.nodes.get(id);
+      const start = starts.get(id);
+      if (!node || !start) continue;
+      node.x = start.x + (target.x - start.x) * ease;
+      node.y = start.y + (target.y - start.y) * ease;
+    }
+    render();
+    if (t < 1) requestAnimationFrame(step);
+    else finish();
+  };
+  requestAnimationFrame(step);
+}
+
+tidyBtn.addEventListener("click", tidyUp);
+
 clearSelectionBtn.addEventListener("click", () => {
   selectedNodeId = null;
   render();
@@ -338,6 +379,12 @@ document.addEventListener("keydown", (event) => {
     if (!selectedNodeId) return;
     event.preventDefault();
     deleteNodeBtn.click();
+    return;
+  }
+
+  if (key === "t" && !withMeta) {
+    event.preventDefault();
+    tidyUp();
     return;
   }
 

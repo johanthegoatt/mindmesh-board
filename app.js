@@ -8,6 +8,7 @@ import {
   moveNode,
   removeNode,
   renameNode,
+  restoreSnapshot,
   serializeState
 } from "./src/boardState.js";
 import { createHistory, pushSnapshot, redoSnapshot, undoSnapshot } from "./src/history.js";
@@ -131,8 +132,9 @@ function persistAndRecord(message, publish = true) {
 }
 
 function applySnapshot(snapshot, message, publish = true) {
-  state = createBoardState(snapshot);
-  saveSnapshot(snapshot);
+  state = restoreSnapshot(state, snapshot);
+  history.present = serializeState(state);
+  saveSnapshot(history.present);
   render();
   if (publish) {
     publishSnapshot();

@@ -11,6 +11,7 @@ import {
   moveNode,
   removeNode,
   renameNode,
+  restoreSnapshot,
   serializeState
 } from "../src/boardState.js";
 
@@ -107,4 +108,56 @@ test("exportMarkdown and importMarkdown roundtrip key data", () => {
   assert.equal(markdown.includes("## Links"), true);
   assert.equal(rebuilt.nodes.has("a"), true);
   assert.equal(rebuilt.links.has("a::b"), true);
+});
+
+test("a delete in one tab is not undone by an older copy from another tab", () => {
+  const left = createBoardState();
+  addNode(left, { id: "a", label: "Keep" });
+  addNode(left, { id: "b", label: "Drop" });
+  connectNodes(left, "a", "b");
+  const right = createBoardState(serializeState(left));
+  const staleCopy = serializeState(right);
+
+  removeNode(left, "b", Date.now() + 5000);
+  mergeRemoteState(left, staleCopy);
+  assert.equal(left.nodes.has("b"), false);
+  assert.equal(left.links.size, 0);
+
+  mergeRemoteState(right, serializeState(left));
+  assert.equal(right.nodes.has("b"), false);
+  assert.equal(right.links.size, 0);
+});
+
+test("an edit made after the delete brings the idea back", () => {
+  const left = createBoardState();
+  addNode(left, { id: "a", label: "Idea" });
+  const right = createBoardState(serializeState(left));
+  removeNode(left, "a", 1000);
+  const renamed = serializeState(right);
+  renamed.nodes[0].updatedAt = 2000;
+  mergeRemoteState(left, renamed);
+  assert.equal(left.nodes.has("a"), true);
+  assert.equal(left.deleted.has("a"), false);
+});
+
+test("undoing a delete wins over the tombstone in other tabs", () => {
+  const tab = createBoardState();
+  addNode(tab, { id: "a", label: "Idea" });
+  const before = serializeState(tab);
+  removeNode(tab, "a", Date.now() + 1000);
+  const peer = createBoardState(serializeState(tab));
+
+  const restored = restoreSnapshot(tab, before, Date.now() + 2000);
+  mergeRemoteState(peer, serializeState(restored));
+  assert.equal(peer.nodes.has("a"), true);
+});
+
+test("undoing an add tombstones the node so peers drop it too", () => {
+  const tab = createBoardState();
+  const empty = serializeState(tab);
+  addNode(tab, { id: "a" });
+  const peer = createBoardState(serializeState(tab));
+  const restored = restoreSnapshot(tab, empty, Date.now() + 1000);
+  mergeRemoteState(peer, serializeState(restored));
+  assert.equal(peer.nodes.has("a"), false);
 });

@@ -1,5 +1,8 @@
 const DEFAULT_X = 200;
 const DEFAULT_Y = 140;
+// Tombstones are kept so a delete can win against an older copy of the node
+// arriving from another tab. Only the newest ones are kept.
+const TOMBSTONE_LIMIT = 500;
 
 function cloneNode(node) {
   return {
@@ -23,8 +26,14 @@ export function createBoardState(seed = {}) {
   const state = {
     nodes: new Map(),
     links: new Set(),
+    deleted: new Map(),
     version: Number(seed.version || 0)
   };
+
+  for (const entry of seed.deleted || []) {
+    const [id, at] = Array.isArray(entry) ? entry : [];
+    if (id != null && Number.isFinite(at)) state.deleted.set(String(id), at);
+  }
 
   for (const node of seed.nodes || []) {
     const safeNode = {
@@ -96,12 +105,7 @@ export function renameNode(state, nodeId, nextLabel) {
   return cloneNode(node);
 }
 
-export function removeNode(state, nodeId) {
-  const id = String(nodeId);
-  if (!state.nodes.has(id)) {
-    throw new Error(`Node not found: ${nodeId}`);
-  }
-
+function dropNode(state, id) {
   state.nodes.delete(id);
   state.links = new Set(
     Array.from(state.links.values()).filter((link) => {
@@ -109,8 +113,55 @@ export function removeNode(state, nodeId) {
       return a !== id && b !== id;
     })
   );
+}
+
+function markDeleted(state, id, at) {
+  const prev = state.deleted.get(id);
+  state.deleted.set(id, Math.max(prev || 0, at));
+  while (state.deleted.size > TOMBSTONE_LIMIT) {
+    let oldestId = null;
+    let oldestAt = Infinity;
+    for (const [key, value] of state.deleted) {
+      if (value < oldestAt) {
+        oldestAt = value;
+        oldestId = key;
+      }
+    }
+    state.deleted.delete(oldestId);
+  }
+}
+
+export function removeNode(state, nodeId, now = Date.now()) {
+  const id = String(nodeId);
+  if (!state.nodes.has(id)) {
+    throw new Error(`Node not found: ${nodeId}`);
+  }
+
+  dropNode(state, id);
+  markDeleted(state, id, now);
   state.version += 1;
   return id;
+}
+
+// Undo and redo swap in an old snapshot. Anything that comes back or goes away
+// is stamped with the current time so other tabs treat it as a fresh edit
+// instead of an old one that their own newer copy should overwrite.
+export function restoreSnapshot(current, snapshot, now = Date.now()) {
+  const next = createBoardState(snapshot);
+  for (const [id, at] of current.deleted) {
+    if (!next.nodes.has(id)) markDeleted(next, id, at);
+  }
+  for (const node of next.nodes.values()) {
+    if (!current.nodes.has(node.id)) {
+      node.updatedAt = now;
+      next.deleted.delete(node.id);
+    }
+  }
+  for (const id of current.nodes.keys()) {
+    if (!next.nodes.has(id)) markDeleted(next, id, now);
+  }
+  next.version = Math.max(current.version, next.version) + 1;
+  return next;
 }
 
 export function connectNodes(state, leftId, rightId) {
@@ -138,15 +189,25 @@ export function serializeState(state) {
   return {
     version: state.version,
     nodes: Array.from(state.nodes.values()).map(cloneNode),
-    links: Array.from(state.links.values())
+    links: Array.from(state.links.values()),
+    deleted: Array.from(state.deleted.entries())
   };
 }
 
 export function mergeRemoteState(localState, remoteSnapshot) {
   const remote = createBoardState(remoteSnapshot);
 
+  for (const [id, at] of remote.deleted) {
+    const localNode = localState.nodes.get(id);
+    if (localNode && localNode.updatedAt <= at) dropNode(localState, id);
+    markDeleted(localState, id, at);
+  }
+
   for (const remoteNode of remote.nodes.values()) {
     const localNode = localState.nodes.get(remoteNode.id);
+    const deletedAt = localState.deleted.get(remoteNode.id);
+    if (deletedAt != null && deletedAt >= remoteNode.updatedAt) continue;
+    if (deletedAt != null) localState.deleted.delete(remoteNode.id);
     if (!localNode || remoteNode.updatedAt >= localNode.updatedAt) {
       localState.nodes.set(remoteNode.id, cloneNode(remoteNode));
     }

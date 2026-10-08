@@ -14,6 +14,7 @@ import {
 import { createHistory, pushSnapshot, redoSnapshot, undoSnapshot } from "./src/history.js";
 import { clearSnapshot, loadSnapshot, saveSnapshot } from "./src/persistence.js";
 import { nearestInDirection, placeChild } from "./src/keyboard.js";
+import { wrapLabel } from "./src/label.js";
 import { forceLayout } from "./src/layout.js";
 import { fromOutline, toOutline } from "./src/outline.js";
 import { createPip } from "./src/pip.js";
@@ -101,11 +102,21 @@ function render() {
     circle.setAttribute("r", "36");
 
     const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    const lines = wrapLabel(node.label);
     text.setAttribute("x", node.x);
-    text.setAttribute("y", node.y);
-    text.textContent = node.label;
+    text.setAttribute("y", node.y - ((lines.length - 1) * 13) / 2);
+    lines.forEach((part, i) => {
+      const tspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+      tspan.setAttribute("x", node.x);
+      if (i) tspan.setAttribute("dy", "13");
+      tspan.textContent = part;
+      text.append(tspan);
+    });
 
-    group.append(circle, text);
+    const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
+    title.textContent = node.label;
+
+    group.append(title, circle, text);
     boardSvg.append(group);
   }
 

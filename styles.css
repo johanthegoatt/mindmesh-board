@@ -132,7 +132,7 @@ button:hover {
 
 .node text {
   fill: var(--ink);
-  font-size: 13px;
+  font-size: 12px;
   text-anchor: middle;
   dominant-baseline: central;
   pointer-events: none;

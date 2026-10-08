@@ -13,6 +13,7 @@ import {
 } from "./src/boardState.js";
 import { createHistory, pushSnapshot, redoSnapshot, undoSnapshot } from "./src/history.js";
 import { clearSnapshot, loadSnapshot, saveSnapshot } from "./src/persistence.js";
+import { nearestInDirection, placeChild } from "./src/keyboard.js";
 import { forceLayout } from "./src/layout.js";
 import { createSyncBus } from "./src/syncBus.js";
 
@@ -29,6 +30,8 @@ const importBtn = document.getElementById("import-md-btn");
 const importFileInput = document.getElementById("import-md-file");
 const statusEl = document.getElementById("status");
 const tidyBtn = document.getElementById("tidy-btn");
+const labelEditor = document.getElementById("label-editor");
+let editingNodeId = null;
 const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
 const seedSnapshot = loadSnapshot();
@@ -160,24 +163,72 @@ function addRandomNode() {
 
 addNodeBtn.addEventListener("click", addRandomNode);
 
+function openEditor(nodeId) {
+  const node = state.nodes.get(nodeId);
+  if (!node) return;
+  editingNodeId = nodeId;
+  const ctm = boardSvg.getScreenCTM();
+  const panel = labelEditor.parentElement.getBoundingClientRect();
+  const point = boardSvg.createSVGPoint();
+  point.x = node.x;
+  point.y = node.y;
+  const screen = point.matrixTransform(ctm);
+  labelEditor.style.left = `${screen.x - panel.left}px`;
+  labelEditor.style.top = `${screen.y - panel.top}px`;
+  labelEditor.value = node.label;
+  labelEditor.hidden = false;
+  labelEditor.focus();
+  labelEditor.select();
+}
+
+function closeEditor(save) {
+  if (!editingNodeId) return;
+  const nodeId = editingNodeId;
+  editingNodeId = null;
+  labelEditor.hidden = true;
+  const next = labelEditor.value.trim();
+  const node = state.nodes.get(nodeId);
+  if (save && node && next && next !== node.label) {
+    renameNode(state, nodeId, next);
+    persistAndRecord(`Renamed to "${next}"`);
+  }
+  render();
+}
+
+labelEditor.addEventListener("keydown", (event) => {
+  event.stopPropagation();
+  if (event.key === "Enter") {
+    event.preventDefault();
+    closeEditor(true);
+  } else if (event.key === "Escape") {
+    event.preventDefault();
+    closeEditor(false);
+  } else if (event.key === "Tab") {
+    event.preventDefault();
+    const parentId = editingNodeId;
+    closeEditor(true);
+    addLinkedIdea(parentId);
+  }
+});
+labelEditor.addEventListener("blur", () => closeEditor(true));
+
+function addLinkedIdea(parentId) {
+  if (!parentId || !state.nodes.has(parentId)) return;
+  const spot = placeChild(serializeState(state), parentId);
+  const node = addNode(state, { label: "New idea", x: spot.x, y: spot.y });
+  connectNodes(state, parentId, node.id);
+  selectedNodeId = node.id;
+  persistAndRecord("Added a linked idea");
+  render();
+  openEditor(node.id);
+}
+
 renameNodeBtn.addEventListener("click", () => {
   if (!selectedNodeId) {
     updateStatus("Select a node before renaming.");
     return;
   }
-  const current = state.nodes.get(selectedNodeId);
-  if (!current) return;
-
-  const next = window.prompt("Rename node", current.label);
-  if (next == null) return;
-
-  try {
-    renameNode(state, selectedNodeId, next);
-    persistAndRecord(`Renamed node to "${next.trim()}"`);
-    render();
-  } catch {
-    updateStatus("Rename failed. Label cannot be empty.");
-  }
+  openEditor(selectedNodeId);
 });
 
 deleteNodeBtn.addEventListener("click", () => {
@@ -331,6 +382,11 @@ boardSvg.addEventListener("pointerdown", (event) => {
   render();
 });
 
+boardSvg.addEventListener("dblclick", (event) => {
+  const group = event.target.closest(".node");
+  if (group) openEditor(group.dataset.nodeId);
+});
+
 boardSvg.addEventListener("pointermove", (event) => {
   if (!dragNodeId) return;
   const next = pointerToBoard(event);
@@ -379,6 +435,43 @@ document.addEventListener("keydown", (event) => {
     if (!selectedNodeId) return;
     event.preventDefault();
     deleteNodeBtn.click();
+    return;
+  }
+
+  if (editingNodeId) return;
+
+  if (key === "tab" && selectedNodeId && !event.shiftKey && event.target === document.body) {
+    event.preventDefault();
+    addLinkedIdea(selectedNodeId);
+    return;
+  }
+
+  if ((key === "enter" || key === "f2") && selectedNodeId && event.target === document.body) {
+    event.preventDefault();
+    openEditor(selectedNodeId);
+    return;
+  }
+
+  if (key === "escape" && selectedNodeId) {
+    selectedNodeId = null;
+    render();
+    return;
+  }
+
+  if (key.startsWith("arrow") && selectedNodeId) {
+    const next = nearestInDirection(serializeState(state), selectedNodeId, key);
+    event.preventDefault();
+    if (next) {
+      selectedNodeId = next;
+      render();
+    }
+    return;
+  }
+
+  if (key.startsWith("arrow") && !selectedNodeId && state.nodes.size) {
+    event.preventDefault();
+    selectedNodeId = state.nodes.keys().next().value;
+    render();
     return;
   }
 

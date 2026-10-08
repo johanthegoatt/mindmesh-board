@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import { fromOutline, toOutline } from "../src/outline.js";
 
-test("a map comes out as a nested list starting from its hub", () => {
+test("a map comes out as a nested list starting from the first idea", () => {
   const snapshot = {
     nodes: [
       { id: "t", label: "Trip", x: 600, y: 300 },

@@ -15,10 +15,9 @@ function neighbours(snapshot) {
   return map;
 }
 
-// Each separate cluster starts from its most connected idea (on a tie, the
-// one added first, which is usually the topic the map started from), then walks
-// outward breadth first. Ideas linked in a loop are listed once, under
-// whichever branch reached them first.
+// Each separate cluster starts from the idea added first, which is the topic
+// the map grew from, then walks outward breadth first. Ideas linked in a loop
+// are listed once, under whichever branch reached them first.
 export function toOutline(snapshot) {
   const adj = neighbours(snapshot);
   const byId = new Map(snapshot.nodes.map((node) => [node.id, node]));
@@ -29,9 +28,7 @@ export function toOutline(snapshot) {
   const seen = new Set();
   const lines = [];
 
-  const roots = snapshot.nodes
-    .map((node) => node.id)
-    .sort((a, b) => adj.get(b).length - adj.get(a).length || added.get(a) - added.get(b));
+  const roots = snapshot.nodes.map((node) => node.id);
 
   for (const root of roots) {
     if (seen.has(root)) continue;

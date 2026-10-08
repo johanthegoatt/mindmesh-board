@@ -51,7 +51,7 @@ Then open http://localhost:8091.
 npm test
 ```
 
-31 tests cover merging and tombstones, undo restore, the layout (no overlaps, linked ideas closer than unlinked ones, no crossings on a tree, stays on the board), keyboard placement, list round trips, and Pip's tips staying short and free of jargon.
+35 tests cover merging and tombstones, undo restore, the layout (no overlaps, linked ideas closer than unlinked ones, no crossings on a tree, stays on the board), keyboard placement, label wrapping, list round trips, and Pip's tips staying short and free of jargon.
 
 ## License
 

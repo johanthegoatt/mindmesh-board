@@ -4,29 +4,30 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MindMesh Board</title>
-  <meta name="description" content="Local-first collaborative mind mapping board.">
+  <meta name="description" content="Jot ideas, link the ones that go together, and tidy them into a clear map. Saves on your device, no sign up.">
   <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
   <main class="app-shell">
     <header class="hero">
       <h1>MindMesh Board</h1>
-      <p>Node-link brainstorming board with local sync simulation.</p>
+      <p>Jot ideas, link the ones that go together, and tidy them into a clear map. It saves on this device, no sign up.</p>
       <div class="actions">
-        <button id="add-node-btn" type="button">Add Node</button>
+        <button id="add-node-btn" type="button">Add idea</button>
         <button id="rename-node-btn" type="button">Rename</button>
-        <button id="delete-node-btn" type="button">Delete</button>
+        <button id="delete-node-btn" type="button">Remove</button>
         <button id="tidy-btn" type="button">Tidy up</button>
-        <button id="clear-selection-btn" type="button">Clear Selection</button>
+        <button id="clear-selection-btn" type="button">Unselect</button>
         <button id="undo-btn" type="button">Undo</button>
         <button id="redo-btn" type="button">Redo</button>
-        <button id="new-board-btn" type="button">New Board</button>
+        <button id="new-board-btn" type="button">Start over</button>
         <button id="copy-list-btn" type="button">Copy as list</button>
-        <button id="export-md-btn" type="button">Export Markdown</button>
-        <button id="import-md-btn" type="button">Import Markdown</button>
+        <button id="export-md-btn" type="button">Save a backup</button>
+        <button id="import-md-btn" type="button">Open a backup</button>
         <input id="import-md-file" type="file" accept=".md,.txt" hidden>
       </div>
-      <p id="status" class="status" aria-live="polite"></p>
+      <p class="keys"><kbd>N</kbd> new idea · <kbd>Tab</kbd> linked idea · <kbd>Enter</kbd> rename · arrows to move · <kbd>T</kbd> tidy · paste a list to add many</p>
+      <p class="status"><span id="summary"></span> <span id="status" aria-live="polite"></span></p>
     </header>
 
     <section class="board-panel">
@@ -34,6 +35,32 @@
       <svg id="board" viewBox="0 0 1200 700" role="img" aria-label="Mind mapping board"></svg>
     </section>
   </main>
+
+  <div class="pip-dock" id="pip-dock">
+    <div class="pip-bubble" role="status" aria-live="polite"></div>
+    <button type="button" class="pip" aria-label="Pip the thought bubble. Tap for a tip.">
+      <svg viewBox="0 0 120 120" aria-hidden="true">
+        <ellipse cx="60" cy="114" rx="30" ry="4.5" class="pip-shadow"/>
+        <g class="pip-body">
+          <circle cx="22" cy="104" r="5" class="pip-puff"/>
+          <circle cx="12" cy="113" r="3" class="pip-puff"/>
+          <path d="M30 86c-14 0-22-10-20-22 1-9 8-15 16-16 1-14 13-24 27-22 7-9 22-11 31-3 11-2 22 6 23 17 9 3 14 12 12 21-2 11-12 17-22 16-4 7-12 11-21 9-6 6-17 7-24 2-8 3-17 2-22-2z" class="pip-cloud"/>
+          <g class="pip-eyes">
+            <ellipse cx="48" cy="54" rx="7" ry="8.5" class="pip-white"/><circle cx="48" cy="55" r="4" class="pip-pupil"/>
+            <ellipse cx="74" cy="54" rx="7" ry="8.5" class="pip-white"/><circle cx="74" cy="55" r="4" class="pip-pupil"/>
+            <path d="M40 54h16M66 54h16" class="pip-lids"/>
+          </g>
+          <ellipse cx="38" cy="68" rx="5" ry="3" class="pip-blush"/>
+          <ellipse cx="84" cy="68" rx="5" ry="3" class="pip-blush"/>
+          <path d="M52 70q9 8 18 0" class="pip-mouth"/>
+          <path d="M53 72q8-5 16 0" class="pip-mouth-flat"/>
+          <ellipse cx="61" cy="72" rx="4.5" ry="5.5" class="pip-mouth-o"/>
+          <path d="M92 26l3-8M100 32l7-4M86 22l-1-8" class="pip-spark"/>
+        </g>
+      </svg>
+    </button>
+    <button type="button" class="pip-hide" aria-label="Hide Pip">×</button>
+  </div>
 
   <script type="module" src="./app.js"></script>
 </body>

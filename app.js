@@ -16,6 +16,7 @@ import { clearSnapshot, loadSnapshot, saveSnapshot } from "./src/persistence.js"
 import { nearestInDirection, placeChild } from "./src/keyboard.js";
 import { forceLayout } from "./src/layout.js";
 import { fromOutline, toOutline } from "./src/outline.js";
+import { createPip } from "./src/pip.js";
 import { createSyncBus } from "./src/syncBus.js";
 
 const boardSvg = document.getElementById("board");
@@ -30,6 +31,8 @@ const exportBtn = document.getElementById("export-md-btn");
 const importBtn = document.getElementById("import-md-btn");
 const importFileInput = document.getElementById("import-md-file");
 const statusEl = document.getElementById("status");
+const summaryEl = document.getElementById("summary");
+const pip = createPip(document.getElementById("pip-dock"));
 const tidyBtn = document.getElementById("tidy-btn");
 const labelEditor = document.getElementById("label-editor");
 let editingNodeId = null;
@@ -106,7 +109,15 @@ function render() {
     boardSvg.append(group);
   }
 
-  updateStatus(`Nodes: ${snapshot.nodes.length} | Links: ${snapshot.links.length} | Version: ${snapshot.version}`);
+  const ideas = snapshot.nodes.length;
+  const links = snapshot.links.length;
+  summaryEl.textContent = `${ideas} ${ideas === 1 ? "idea" : "ideas"}, ${links} ${links === 1 ? "link" : "links"}. Saved on this device.`;
+  pip.update(ideas, links);
+  const picked = selectedNodeId && state.nodes.get(selectedNodeId);
+  if (picked) {
+    const r = boardSvg.getBoundingClientRect();
+    pip.lookAt({ x: r.left + (picked.x / 1200) * r.width, y: r.top + (picked.y / 700) * r.height });
+  }
 }
 
 function publishSnapshot() {
@@ -135,7 +146,7 @@ function persistAndRecord(message, publish = true) {
     });
   }
   if (message) {
-    updateStatus(`${message} | Nodes: ${snapshot.nodes.length} | Links: ${snapshot.links.length} | Version: ${snapshot.version}`);
+    updateStatus(message);
   }
 }
 
@@ -154,13 +165,18 @@ function applySnapshot(snapshot, message, publish = true) {
 
 function addRandomNode() {
   const count = state.nodes.size + 1;
-  addNode(state, {
-    label: `Idea ${count}`,
-    x: 90 + Math.random() * 980,
-    y: 90 + Math.random() * 510
-  });
-  persistAndRecord(`Added Idea ${count}`);
+  let spot = { x: 600, y: 350 };
+  if (state.nodes.size) {
+    const probe = serializeState(state);
+    probe.nodes.push({ id: "__middle", x: 600, y: 350 });
+    spot = placeChild(probe, "__middle");
+  }
+  const node = addNode(state, { label: `Idea ${count}`, x: spot.x, y: spot.y });
+  selectedNodeId = node.id;
+  persistAndRecord(`Added "Idea ${count}"`);
   render();
+  pip.react("added", { ideas: state.nodes.size });
+  openEditor(node.id);
 }
 
 addNodeBtn.addEventListener("click", addRandomNode);
@@ -227,7 +243,7 @@ function addLinkedIdea(parentId) {
 
 renameNodeBtn.addEventListener("click", () => {
   if (!selectedNodeId) {
-    updateStatus("Select a node before renaming.");
+    pip.react("nothing", { text: "Pick an idea first, then rename it." });
     return;
   }
   openEditor(selectedNodeId);
@@ -235,23 +251,24 @@ renameNodeBtn.addEventListener("click", () => {
 
 deleteNodeBtn.addEventListener("click", () => {
   if (!selectedNodeId) {
-    updateStatus("Select a node before deleting.");
+    pip.react("nothing", { text: "Pick an idea first, then remove it." });
     return;
   }
 
   try {
     removeNode(state, selectedNodeId);
-    persistAndRecord(`Deleted node ${selectedNodeId}`);
+    persistAndRecord("Removed an idea");
+    pip.react("removed");
     selectedNodeId = null;
     render();
   } catch {
-    updateStatus("Delete failed.");
+    updateStatus("Couldn't remove that idea.");
   }
 });
 
 function tidyUp() {
   if (state.nodes.size < 2) {
-    updateStatus("Add a few ideas first, then tidy up.");
+    pip.react("nothing", { text: "Add a few ideas first, then I'll tidy them." });
     return;
   }
   const targets = forceLayout(serializeState(state));
@@ -260,8 +277,9 @@ function tidyUp() {
     for (const [id, target] of Object.entries(targets)) {
       if (state.nodes.has(id)) moveNode(state, id, target.x, target.y);
     }
-    persistAndRecord("Tidied up: linked ideas sit together, nothing overlaps");
+    persistAndRecord("Tidied up");
     render();
+    pip.react("tidied");
   };
   if (reduceMotion.matches) {
     finish();
@@ -295,21 +313,22 @@ clearSelectionBtn.addEventListener("click", () => {
 undoBtn.addEventListener("click", () => {
   const previous = undoSnapshot(history);
   if (!previous) {
-    updateStatus("Nothing to undo.");
+    pip.react("nothing", { text: "Nothing to undo yet." });
     return;
   }
   selectedNodeId = null;
-  applySnapshot(previous, "Undo applied.");
+  applySnapshot(previous, "Undone");
+  pip.react("undo");
 });
 
 redoBtn.addEventListener("click", () => {
   const next = redoSnapshot(history);
   if (!next) {
-    updateStatus("Nothing to redo.");
+    pip.react("nothing", { text: "Nothing to redo." });
     return;
   }
   selectedNodeId = null;
-  applySnapshot(next, "Redo applied.");
+  applySnapshot(next, "Redone");
 });
 
 newBoardBtn.addEventListener("click", () => {
@@ -321,7 +340,8 @@ newBoardBtn.addEventListener("click", () => {
   saveSnapshot(snapshot);
   render();
   publishSnapshot();
-  updateStatus("Started a new board.");
+  updateStatus("Started over");
+  pip.react("fresh");
 });
 
 async function copyText(text) {
@@ -344,11 +364,16 @@ async function copyText(text) {
 
 copyListBtn.addEventListener("click", async () => {
   if (!state.nodes.size) {
-    updateStatus("There is nothing on the board to copy yet.");
+    pip.react("nothing", { text: "There's nothing to copy yet. Add an idea first." });
     return;
   }
   const ok = await copyText(toOutline(serializeState(state)));
-  updateStatus(ok ? "Copied as a bulleted list. Paste it into any notes app." : "Copy was blocked by the browser.");
+  if (ok) {
+    updateStatus("Copied as a list");
+    pip.react("copied");
+  } else {
+    pip.react("nothing", { text: "Your browser blocked copying. Try again?" });
+  }
 });
 
 function pasteList(text) {
@@ -371,6 +396,7 @@ function pasteList(text) {
   }
   persistAndRecord(`Added ${parsed.nodes.length} ideas from your list`);
   render();
+  pip.react("pasted", { count: parsed.nodes.length });
   return true;
 }
 
@@ -386,12 +412,12 @@ exportBtn.addEventListener("click", () => {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = "mindmesh-export.md";
+  anchor.download = "mindmesh-backup.md";
   document.body.append(anchor);
   anchor.click();
   anchor.remove();
   URL.revokeObjectURL(url);
-  updateStatus("Exported board as Markdown.");
+  updateStatus("Backup saved to your downloads");
 });
 
 importBtn.addEventListener("click", () => {
@@ -412,9 +438,9 @@ importFileInput.addEventListener("change", async () => {
     resetHistory(snapshot);
     render();
     publishSnapshot();
-    updateStatus(`Imported board from ${file.name}.`);
+    updateStatus(`Opened ${file.name}`);
   } catch {
-    updateStatus("Import failed. Ensure the file uses MindMesh Markdown export format.");
+    pip.react("nothing", { text: "I couldn't read that file. Pick a backup saved from MindMesh." });
   } finally {
     importFileInput.value = "";
   }
@@ -422,15 +448,23 @@ importFileInput.addEventListener("change", async () => {
 
 boardSvg.addEventListener("pointerdown", (event) => {
   const group = event.target.closest(".node");
-  if (!group) return;
+  if (!group) {
+    if (selectedNodeId) {
+      selectedNodeId = null;
+      render();
+    }
+    return;
+  }
   const nodeId = group.dataset.nodeId;
   dragMoved = false;
 
   if (selectedNodeId && selectedNodeId !== nodeId) {
+    const from = state.nodes.get(selectedNodeId).label;
     connectNodes(state, selectedNodeId, nodeId);
     selectedNodeId = nodeId;
-    persistAndRecord(`Connected nodes on ${nodeId}`);
+    persistAndRecord("Linked two ideas");
     render();
+    pip.react("linked", { a: from, b: state.nodes.get(nodeId).label });
     return;
   }
 
@@ -455,11 +489,10 @@ boardSvg.addEventListener("pointermove", (event) => {
 
 boardSvg.addEventListener("pointerup", (event) => {
   if (!dragNodeId) return;
-  const movedNodeId = dragNodeId;
   dragNodeId = null;
   boardSvg.releasePointerCapture(event.pointerId);
   if (dragMoved) {
-    persistAndRecord(`Moved ${movedNodeId}`);
+    persistAndRecord("Moved an idea");
   }
 });
 
@@ -470,7 +503,7 @@ syncBus.subscribe((packet) => {
   pushSnapshot(history, snapshot);
   saveSnapshot(snapshot);
   render();
-  updateStatus("Merged remote board update.");
+  pip.react("synced");
 });
 
 document.addEventListener("keydown", (event) => {
@@ -546,7 +579,11 @@ document.addEventListener("keydown", (event) => {
 });
 
 if (!seedSnapshot) {
-  addRandomNode();
-  addRandomNode();
+  const first = addNode(state, { label: "Main idea", x: 600, y: 350 });
+  selectedNodeId = first.id;
+  const snapshot = serializeState(state);
+  resetHistory(snapshot);
+  saveSnapshot(snapshot);
 }
 render();
+pip.start(state.nodes.size, state.links.size, Boolean(seedSnapshot));

@@ -15,6 +15,7 @@ import { createHistory, pushSnapshot, redoSnapshot, undoSnapshot } from "./src/h
 import { clearSnapshot, loadSnapshot, saveSnapshot } from "./src/persistence.js";
 import { nearestInDirection, placeChild } from "./src/keyboard.js";
 import { forceLayout } from "./src/layout.js";
+import { fromOutline, toOutline } from "./src/outline.js";
 import { createSyncBus } from "./src/syncBus.js";
 
 const boardSvg = document.getElementById("board");
@@ -32,6 +33,7 @@ const statusEl = document.getElementById("status");
 const tidyBtn = document.getElementById("tidy-btn");
 const labelEditor = document.getElementById("label-editor");
 let editingNodeId = null;
+const copyListBtn = document.getElementById("copy-list-btn");
 const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
 const seedSnapshot = loadSnapshot();
@@ -320,6 +322,62 @@ newBoardBtn.addEventListener("click", () => {
   render();
   publishSnapshot();
   updateStatus("Started a new board.");
+});
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    document.body.append(area);
+    area.select();
+    const ok = document.execCommand("copy");
+    area.remove();
+    return ok;
+  }
+}
+
+copyListBtn.addEventListener("click", async () => {
+  if (!state.nodes.size) {
+    updateStatus("There is nothing on the board to copy yet.");
+    return;
+  }
+  const ok = await copyText(toOutline(serializeState(state)));
+  updateStatus(ok ? "Copied as a bulleted list. Paste it into any notes app." : "Copy was blocked by the browser.");
+});
+
+function pasteList(text) {
+  const parsed = fromOutline(text, () => `node-${crypto.randomUUID().slice(0, 8)}`);
+  if (parsed.nodes.length < 2) return false;
+  const parentOf = new Map(parsed.links.map(([parent, child]) => [child, parent]));
+  const anchor = selectedNodeId && state.nodes.has(selectedNodeId) ? selectedNodeId : null;
+  for (const item of parsed.nodes) {
+    const parent = parentOf.get(item.id) || anchor;
+    let spot;
+    if (parent) {
+      spot = placeChild(serializeState(state), parent);
+    } else {
+      const probe = serializeState(state);
+      probe.nodes.push({ id: "__middle", x: 600, y: 350 });
+      spot = state.nodes.size ? placeChild(probe, "__middle") : { x: 600, y: 350 };
+    }
+    addNode(state, { id: item.id, label: item.label, x: spot.x, y: spot.y });
+    if (parent) connectNodes(state, parent, item.id);
+  }
+  persistAndRecord(`Added ${parsed.nodes.length} ideas from your list`);
+  render();
+  return true;
+}
+
+document.addEventListener("paste", (event) => {
+  if (editingNodeId || event.target.closest?.("input, textarea")) return;
+  const text = event.clipboardData?.getData("text/plain") || "";
+  if (pasteList(text)) event.preventDefault();
 });
 
 exportBtn.addEventListener("click", () => {

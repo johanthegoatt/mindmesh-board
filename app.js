@@ -1,3 +1,4 @@
+import { fullView, panBy, viewBoxString, zoomAt, zoomOf } from "./src/viewport.js";
 import {
   addNode,
   connectNodes,
@@ -29,6 +30,7 @@ const undoBtn = document.getElementById("undo-btn");
 const redoBtn = document.getElementById("redo-btn");
 const newBoardBtn = document.getElementById("new-board-btn");
 const exportBtn = document.getElementById("export-md-btn");
+const fitBtn = document.getElementById("fit-btn");
 const importBtn = document.getElementById("import-md-btn");
 const importFileInput = document.getElementById("import-md-file");
 const statusEl = document.getElementById("status");
@@ -127,7 +129,7 @@ function render() {
   const picked = selectedNodeId && state.nodes.get(selectedNodeId);
   if (picked) {
     const r = boardSvg.getBoundingClientRect();
-    pip.lookAt({ x: r.left + (picked.x / 1200) * r.width, y: r.top + (picked.y / 700) * r.height });
+    pip.lookAt({ x: r.left + ((picked.x - view.x) / view.width) * r.width, y: r.top + ((picked.y - view.y) / view.height) * r.height });
   }
 }
 
@@ -457,13 +459,53 @@ importFileInput.addEventListener("change", async () => {
   }
 });
 
+// ----- Zoom and pan -----
+let view = fullView();
+const pointers = new Map();
+let panFrom = null;
+let pinchFrom = null;
+
+function setView(next) {
+  view = next;
+  boardSvg.setAttribute("viewBox", viewBoxString(view));
+  fitBtn.hidden = zoomOf(view) === 1;
+}
+
+// Screen pixels to world units at the current zoom.
+function worldPerPixel() {
+  return view.width / boardSvg.getBoundingClientRect().width;
+}
+
+function rawBoardPoint(event) {
+  const point = boardSvg.createSVGPoint();
+  point.x = event.clientX;
+  point.y = event.clientY;
+  return point.matrixTransform(boardSvg.getScreenCTM().inverse());
+}
+
+boardSvg.addEventListener("wheel", (event) => {
+  event.preventDefault();
+  // Trackpads send many small deltas, mouse wheels a few big ones.
+  setView(zoomAt(view, Math.exp(-event.deltaY * 0.0015), rawBoardPoint(event)));
+}, { passive: false });
+
+fitBtn.addEventListener("click", () => setView(fullView()));
+
 boardSvg.addEventListener("pointerdown", (event) => {
+  pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  if (pointers.size === 2) {
+    // A second finger turns whatever the first was doing into a pinch.
+    dragNodeId = null;
+    panFrom = null;
+    const [a, b] = [...pointers.values()];
+    pinchFrom = { distance: Math.hypot(a.x - b.x, a.y - b.y), view };
+    return;
+  }
   const group = event.target.closest(".node");
   if (!group) {
-    if (selectedNodeId) {
-      selectedNodeId = null;
-      render();
-    }
+    // Empty board: drag to pan; a tap without moving still clears the selection.
+    panFrom = { x: event.clientX, y: event.clientY, moved: false };
+    boardSvg.setPointerCapture(event.pointerId);
     return;
   }
   const nodeId = group.dataset.nodeId;
@@ -491,6 +533,28 @@ boardSvg.addEventListener("dblclick", (event) => {
 });
 
 boardSvg.addEventListener("pointermove", (event) => {
+  if (pointers.has(event.pointerId)) pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  if (pinchFrom && pointers.size === 2) {
+    const [a, b] = [...pointers.values()];
+    const rect = boardSvg.getBoundingClientRect();
+    const mid = { clientX: (a.x + b.x) / 2, clientY: (a.y + b.y) / 2 };
+    const factor = Math.hypot(a.x - b.x, a.y - b.y) / pinchFrom.distance;
+    const centre = { x: pinchFrom.view.x + ((mid.clientX - rect.left) / rect.width) * pinchFrom.view.width, y: pinchFrom.view.y + ((mid.clientY - rect.top) / rect.height) * pinchFrom.view.height };
+    setView(zoomAt(pinchFrom.view, factor, centre));
+    return;
+  }
+  if (panFrom) {
+    const scale = worldPerPixel();
+    const dx = event.clientX - panFrom.x;
+    const dy = event.clientY - panFrom.y;
+    if (Math.abs(dx) + Math.abs(dy) > 3) panFrom.moved = true;
+    if (panFrom.moved) {
+      setView(panBy(view, dx * scale, dy * scale));
+      panFrom.x = event.clientX;
+      panFrom.y = event.clientY;
+    }
+    return;
+  }
   if (!dragNodeId) return;
   const next = pointerToBoard(event);
   moveNode(state, dragNodeId, next.x, next.y);
@@ -498,7 +562,24 @@ boardSvg.addEventListener("pointermove", (event) => {
   render();
 });
 
+function endPointer(event) {
+  pointers.delete(event.pointerId);
+  if (pointers.size < 2) pinchFrom = null;
+  if (panFrom) {
+    if (!panFrom.moved && selectedNodeId) {
+      selectedNodeId = null;
+      render();
+    }
+    panFrom = null;
+    return true;
+  }
+  return false;
+}
+
+boardSvg.addEventListener("pointercancel", endPointer);
+
 boardSvg.addEventListener("pointerup", (event) => {
+  if (endPointer(event)) return;
   if (!dragNodeId) return;
   dragNodeId = null;
   boardSvg.releasePointerCapture(event.pointerId);

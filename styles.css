@@ -267,3 +267,13 @@ button:focus-visible {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+#board {
+  touch-action: none;
+}
+
+.fit-btn {
+  position: absolute;
+  right: 20px;
+  top: 20px;
+}

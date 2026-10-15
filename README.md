@@ -9,6 +9,7 @@ Live: https://johanthegoat.xyz/work/mindmesh/
 ## What you can do
 
 - **Add ideas fast from the keyboard.** Pick an idea and press `Tab` to add one already linked to it, with the name box open. Press `Tab` again to keep going. `Enter` renames, arrow keys hop between ideas, `N` adds a loose idea.
+- **Zoom in.** Scroll or pinch to zoom toward a spot, drag empty board to move around, and "Fit board" to see it all again. Handy on a phone, where the whole map is small.
 - **Tidy up.** Press `T` (or the button) and the board rearranges itself so linked ideas sit together and nothing overlaps.
 - **Paste a list, get a map.** Copy any bulleted or indented list from your notes and press `Ctrl+V` on the board.
 - **Copy as list.** Turn the map back into bullet points for a doc, an email or a notes app.
@@ -26,12 +27,14 @@ No framework and no backend: ES modules, an SVG board, and `node --test` for the
 | `src/layout.js` | Tidy up (force-directed layout) |
 | `src/keyboard.js` | Where a new linked idea goes, which idea an arrow key picks |
 | `src/outline.js` | Map to bulleted list and back |
+| `src/viewport.js` | Zoom and pan as a window onto the fixed board |
 | `src/pip.js` | Pip the mascot |
 | `src/history.js`, `src/persistence.js`, `src/syncBus.js` | Undo stack, local save, tab-to-tab messages |
 
 ### The research behind each part
 
 - **Deletes that stick across tabs.** Tabs share full snapshots over `BroadcastChannel`, and merging used to only add or overwrite, so a removed idea came back the moment another tab sent an older copy. Removing an idea now leaves a timestamped tombstone: the last-writer-wins element set from Shapiro, Preguiça, Baquero and Zawirski, *A comprehensive study of Convergent and Commutative Replicated Data Types* (INRIA RR-7506, 2011). An edit made after the removal still wins, and undo restamps what it restores so the other tab gets it back too.
+- **Zoom in.** Scroll or pinch to zoom toward a spot, drag empty board to move around, and "Fit board" to see it all again. Handy on a phone, where the whole map is small.
 - **Tidy up.** Fruchterman and Reingold, *Graph Drawing by Force-directed Placement* (Software: Practice and Experience 21(11), 1991). Ideas push apart with k²/d, links pull with d²/k, and a cooling step size lets the board settle. Two changes from the textbook version came from real boards: k is capped at 150 px so a small map doesn't fling ideas into the corners, and pairs further apart than 2k don't push (the paper's own grid variant), so a lone idea isn't shoved off by everything else. A last pass separates any circles that still touch. The run is seeded, so the same board always tidies the same way.
 - **Keyboard first.** Card, Moran and Newell's keystroke-level model (*CACM* 23(7), 1980) puts a key press near 0.2 s and pointing with a mouse near 1.1 s. Adding a linked idea used to take a button click, a drag, two clicks to link and a browser prompt. Now it is one key.
 - **Lists in and out.** Nesting follows the CommonMark list item rules (https://spec.commonmark.org/0.31.2/#list-items), with a tab counted as four spaces, so lists from notes apps keep their shape. Dashes, stars, numbers, checkboxes and plain indented lines all work, and a pasted list copies back out in the same order.
